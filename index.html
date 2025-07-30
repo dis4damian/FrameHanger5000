@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frame Hanger 9000</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #111;
+      color: #eee;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+    .page {
+      display: none;
+    }
+    .active {
+      display: block;
+    }
+    .form-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .form-group {
+      flex: 1 1 calc(50% - 20px);
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 1.2em;
+    }
+    #quantity-container {
+      margin-bottom: 20px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      font-size: 1em;
+      border: none;
+      border-radius: 5px;
+      background-color: #222;
+      color: #fff;
+      outline: none;
+      transition: box-shadow 0.3s ease;
+    }
+    input:hover, input:focus {
+      box-shadow: 0 0 8px #0ff;
+    }
+    button {
+      display: block;
+      margin: 20px auto 0 auto;
+      padding: 10px 20px;
+      font-size: 1em;
+      background-color: #444;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: box-shadow 0.3s ease;
+    }
+    button:hover {
+      box-shadow: 0 0 10px #0ff;
+    }
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background-color: #222;
+      border: 1px solid #444;
+    }
+    .offset-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .offset-group div {
+      flex: 0 1 80px;
+    }
+    .offset-group input {
+      width: 100%;
+      padding: 6px;
+      font-size: 1em;
+      border-radius: 4px;
+      border: none;
+      background-color: #222;
+      color: #fff;
+      outline: none;
+      transition: box-shadow 0.3s ease;
+    }
+    .offset-group input:hover, .offset-group input:focus {
+      box-shadow: 0 0 8px #0ff;
+    }
+    #output div {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Frame Hanger 9000</h1>
+
+    <div id="page1" class="page active">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="wallWidth">Wall Width (in)</label>
+          <input type="number" id="wallWidth" value="0" />
+        </div>
+        <div class="form-group">
+          <label for="wallHeight">Wall Height (in)</label>
+          <input type="number" id="wallHeight" value="0" />
+        </div>
+        <div class="form-group">
+          <label for="pictureWidth">Picture Width (in)</label>
+          <input type="number" id="pictureWidth" value="0" />
+        </div>
+        <div class="form-group">
+          <label for="pictureHeight">Picture Height (in)</label>
+          <input type="number" id="pictureHeight" value="0" />
+        </div>
+        <div class="form-group" id="quantity-container">
+          <label for="quantity">Quantity</label>
+          <input type="number" id="quantity" value="0" />
+        </div>
+        <div class="form-group">
+          <label for="hangingHeight">Hanging Height (in)<br><small>(Distance from floor to <strong>top</strong> of picture)</small></label>
+          <input type="number" id="hangingHeight" value="0" />
+        </div>
+      </div>
+      <button onclick="goToPage2()">Calculate Layout</button>
+    </div>
+
+    <div id="page2" class="page">
+      <canvas id="layoutCanvas"></canvas>
+      <div id="output"></div>
+      <button onclick="resetToPage1()">Reset & Back</button>
+      <button onclick="goToPage3()">Apply Offsets</button>
+    </div>
+
+    <div id="page3" class="page">
+      <div id="offsetInputs" class="offset-group"></div>
+      <button onclick="applyOffsetsAndReturn()">Apply Offsets</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('layoutCanvas');
+    const ctx = canvas.getContext('2d');
+    let layoutData = {};
+
+    // Clear 0 on first focus for page1 inputs
+    document.querySelectorAll('#page1 input[type="number"]').forEach(input => {
+      input.addEventListener('focus', function clearZero() {
+        if (this.value === '0') this.value = '';
+        this.removeEventListener('focus', clearZero);
+      });
+    });
+
+    // Scroll to change quantity
+    const quantityInput = document.getElementById('quantity');
+    quantityInput.addEventListener('wheel', e => {
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 1 : -1;
+      let val = parseInt(quantityInput.value) || 1;
+      val = Math.max(1, val + step);
+      quantityInput.value = val;
+    });
+
+    function goToPage2() {
+      const wallWidth = parseFloat(document.getElementById('wallWidth').value);
+      const wallHeight = parseFloat(document.getElementById('wallHeight').value);
+      const pictureWidth = parseFloat(document.getElementById('pictureWidth').value);
+      const pictureHeight = parseFloat(document.getElementById('pictureHeight').value);
+      const quantity = parseInt(document.getElementById('quantity').value);
+      const hangingHeight = parseFloat(document.getElementById('hangingHeight').value);
+
+      if (isNaN(wallWidth) || wallWidth <= 0 ||
+          isNaN(wallHeight) || wallHeight <= 0 ||
+          isNaN(pictureWidth) || pictureWidth <= 0 ||
+          isNaN(pictureHeight) || pictureHeight <= 0 ||
+          isNaN(quantity) || quantity < 1 ||
+          isNaN(hangingHeight) || hangingHeight <= 0 || hangingHeight > wallHeight) {
+        alert('Please enter valid positive numbers. Hanging Height must be ≤ wall height.');
+        return;
+      }
+
+      const totalPicturesWidth = pictureWidth * quantity;
+      const totalGaps = quantity + 1;
+      const gap = (wallWidth - totalPicturesWidth) / totalGaps;
+
+      if (gap < 0) {
+        alert('Pictures do not fit on the wall with spacing. Adjust sizes or quantity.');
+        return;
+      }
+
+      const pictureCenters = Array.from({ length: quantity }, (_, i) =>
+        gap * (i + 1) + pictureWidth * (i + 0.5)
+      );
+
+      layoutData = {
+        wallWidth,
+        wallHeight,
+        pictureWidth,
+        pictureHeight,
+        quantity,
+        hangingHeight,
+        verticalOffsets: Array(quantity).fill(0),
+        pictureCenters,
+        gap
+      };
+
+      drawLayout();
+      renderOutput();
+      showPage('page2');
+    }
+
+    function drawLayout() {
+      const { wallWidth, wallHeight, pictureWidth, pictureHeight, quantity, hangingHeight, verticalOffsets, pictureCenters, gap } = layoutData;
+
+      const padding = 10;
+      const canvasMaxWidth = 700;
+      canvas.width = Math.min(window.innerWidth - 40, canvasMaxWidth);
+      const scale = (canvas.width - padding * 2) / wallWidth;
+      canvas.height = (wallHeight * scale) + 100;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw wall outline
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(padding, padding, wallWidth * scale, wallHeight * scale);
+
+      // Draw single light blue hanging height reference line (no offsets)
+      const hangingY = padding + (wallHeight - hangingHeight) * scale;
+      ctx.strokeStyle = 'lightblue';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padding, hangingY);
+      ctx.lineTo(padding + wallWidth * scale, hangingY);
+      ctx.stroke();
+
+      ctx.fillStyle = 'lightblue';
+      ctx.font = '14px Arial';
+      ctx.fillText(`Hanging Height: ${hangingHeight.toFixed(2)}"`, padding + 5, hangingY - 8);
+
+      for (let i = 0; i < quantity; i++) {
+        const center = pictureCenters[i];
+        const offset = verticalOffsets[i] || 0;
+        const y = padding + (wallHeight - hangingHeight - offset) * scale;
+        const x = padding + (center - pictureWidth / 2) * scale;
+        const color = `hsl(${i * 40}, 70%, 60%)`;
+
+        // Draw picture rectangle
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, pictureWidth * scale, pictureHeight * scale);
+
+        // Label picture number inside rectangle
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Arial';
+        ctx.fillText(`P${i + 1}`, x + 4, y + 16);
+
+        // Draw center mark below wall
+        const centerX = padding + center * scale;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(centerX, padding + wallHeight * scale);
+        ctx.lineTo(centerX, padding + wallHeight * scale + 10);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.font = '12px Arial';
+        ctx.fillText(`${center.toFixed(2)}"`, centerX - 15, padding + wallHeight * scale + 25);
+
+        // Calculate actual top height for this picture with offset
+        // CORRECTED: actualHeight = hangingHeight + offset
+        const actualHeight = hangingHeight + offset;
+
+        // Draw actual hanging height label on right side, vertically centered
+        ctx.fillStyle = color;
+        ctx.font = '12px Arial';
+        const labelX = x + pictureWidth * scale + 5;
+        const labelY = y + (pictureHeight * scale) / 2 + 5;
+        ctx.textAlign = 'start';
+        ctx.fillText(`Height: ${actualHeight.toFixed(2)}"`, labelX, labelY);
+      }
+
+      ctx.strokeStyle = '#aaa';
+      ctx.lineWidth = 1;
+
+      // Left gap line
+      const leftGapX1 = padding;
+      const leftGapX2 = padding + gap * scale;
+      const gapY = padding + wallHeight * scale + 45;
+
+      ctx.beginPath();
+      ctx.moveTo(leftGapX1, gapY);
+      ctx.lineTo(leftGapX2, gapY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(leftGapX1, gapY - 5);
+      ctx.lineTo(leftGapX1, gapY + 5);
+      ctx.moveTo(leftGapX2, gapY - 5);
+      ctx.lineTo(leftGapX2, gapY + 5);
+      ctx.stroke();
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '12px Arial';
+      ctx.fillText(`Gap: ${gap.toFixed(2)}"`, (leftGapX1 + leftGapX2) / 2 - 25, gapY - 8);
+
+      // Right gap line
+      const rightGapX1 = padding + (wallWidth - gap) * scale;
+      const rightGapX2 = padding + wallWidth * scale;
+      ctx.beginPath();
+      ctx.moveTo(rightGapX1, gapY);
+      ctx.lineTo(rightGapX2, gapY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rightGapX1, gapY - 5);
+      ctx.lineTo(rightGapX1, gapY + 5);
+      ctx.moveTo(rightGapX2, gapY - 5);
+      ctx.lineTo(rightGapX2, gapY + 5);
+      ctx.stroke();
+
+      ctx.fillText(`Gap: ${gap.toFixed(2)}"`, (rightGapX1 + rightGapX2) / 2 - 25, gapY - 8);
+
+      if (quantity > 1) {
+        for (let i = 0; i < quantity - 1; i++) {
+          const gapStartX = padding + (pictureCenters[i] + pictureWidth / 2) * scale;
+          const gapEndX = padding + (pictureCenters[i + 1] - pictureWidth / 2) * scale;
+          const gapMidX = (gapStartX + gapEndX) / 2;
+
+          ctx.beginPath();
+          ctx.moveTo(gapStartX, gapY);
+          ctx.lineTo(gapEndX, gapY);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(gapStartX, gapY - 5);
+          ctx.lineTo(gapStartX, gapY + 5);
+          ctx.moveTo(gapEndX, gapY - 5);
+          ctx.lineTo(gapEndX, gapY + 5);
+          ctx.stroke();
+
+          ctx.fillText(`Gap: ${gap.toFixed(2)}"`, gapMidX - 25, gapY - 8);
+        }
+      }
+    }
+
+    function renderOutput() {
+      const { pictureCenters, quantity } = layoutData;
+      const output = document.getElementById('output');
+      output.innerHTML = pictureCenters.map((c, i) =>
+        `<div style="color: hsl(${i * 40}, 70%, 60%)">Picture ${i + 1} center: ${c.toFixed(2)}"</div>`
+      ).join('');
+    }
+
+    function goToPage3() {
+      const offsetInputs = document.getElementById('offsetInputs');
+      offsetInputs.innerHTML = layoutData.pictureCenters.map((_, i) =>
+        `<div><label for="offset${i}">Offset P${i + 1} (+ up, - down)</label><input type="number" id="offset${i}" value="${layoutData.verticalOffsets[i]}" oninput="applyOffsets()"></div>`
+      ).join('');
+      showPage('page3');
+    }
+
+    function applyOffsets() {
+      layoutData.verticalOffsets = layoutData.pictureCenters.map((_, i) =>
+        parseFloat(document.getElementById(`offset${i}`).value) || 0
+      );
+      drawLayout();
+    }
+
+    function applyOffsetsAndReturn() {
+      applyOffsets();
+      showPage('page2');
+      renderOutput();
+    }
+
+    function resetToPage1() {
+      showPage('page1');
+    }
+
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+  </script>
+</body>
+</html>
+
+
